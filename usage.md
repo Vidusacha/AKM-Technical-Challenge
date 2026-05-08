@@ -32,7 +32,7 @@ Follow these steps to deploy and configure the AKM Technical Challenge environme
    ```bash
    chmod 400 akm-key.pem
    ```
-3. Run the Ansible playbook:
+3. Run the Ansible playbook (the local `ansible.cfg` automatically handles host key checking):
    ```bash
    ansible-playbook -i inventory.ini site.yml
    ```

@@ -19,8 +19,13 @@ The environment consists of three Compute Engine instances (`e2-micro`) within a
 
 ## Project Structure
 
-- `main.tf`: Terraform configuration for AWS resources.
+- `main.tf`: Terraform configuration for GCP resources.
 - `outputs.tf`: Infrastructure outputs (IP addresses).
 - `roadmap.md`: Project status and implementation tracking.
 - `site.yml`: Unified Ansible playbook for security and service configuration.
 - `inventory.ini`: Ansible inventory file defining host groups and connection variables.
+- `ansible.cfg`: Ansible configuration for optimal execution (silencing warnings and key checking).
+
+## Status
+
+**Project Complete**: All phases of infrastructure provisioning, configuration management, and functional verification have been successfully executed and documented.
