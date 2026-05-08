@@ -1,0 +1,176 @@
+---
+# ==============================================================================
+# Stage 1: Configure SSH keys on the load balancer and basic security
+# ==============================================================================
+- name: Configure Machine A and basic iptables rules
+  hosts: all
+  become: true
+  tasks:
+    - name: Install iptables package (required for minimal Ubuntu)
+      apt:
+        name: iptables
+        state: present
+        update_cache: true
+
+    - name: Allow established and related connections
+      iptables:
+        chain: INPUT
+        ctstate: ESTABLISHED,RELATED
+        jump: ACCEPT
+
+    - name: Allow local loopback traffic
+      iptables:
+        chain: INPUT
+        in_interface: lo
+        jump: ACCEPT
+
+    - name: Allow SSH (tcp/22)
+      iptables:
+        chain: INPUT
+        protocol: tcp
+        destination_port: 22
+        jump: ACCEPT
+
+- name: Generate and fetch SSH key from Machine A
+  hosts: loadbalancer
+  become: true
+  tasks:
+    - name: Generate SSH key for ubuntu user
+      user:
+        name: ubuntu
+        generate_ssh_key: true
+        ssh_key_bits: 4096
+        ssh_key_file: .ssh/id_rsa
+
+    - name: Fetch Machine A public key to local workstation
+      fetch:
+        src: /home/ubuntu/.ssh/id_rsa.pub
+        dest: ./machine_a_key.pub
+        flat: true
+
+# ==============================================================================
+# Stage 2: Configure Web Servers (Machine B and C)
+# ==============================================================================
+- name: Configure Machine B and C (Nginx)
+  hosts: webservers
+  become: true
+  tasks:
+    - name: Add Machine A public key to authorized_keys
+      authorized_key:
+        user: ubuntu
+        state: present
+        key: "{{ lookup('file', './machine_a_key.pub') }}"
+
+    - name: Allow Nginx traffic (tcp/8080)
+      iptables:
+        chain: INPUT
+        protocol: tcp
+        destination_port: 8080
+        jump: ACCEPT
+
+    - name: Set default iptables policy to DROP
+      iptables:
+        chain: INPUT
+        policy: DROP
+
+    - name: Install Nginx
+      apt:
+        name: nginx
+        state: present
+        update_cache: true
+
+    - name: Configure Nginx port to 8080
+      copy:
+        dest: /etc/nginx/sites-available/default
+        content: |
+          server {
+              listen 8080 default_server;
+              listen [::]:8080 default_server;
+              root /var/www/html;
+              index index.html index.htm;
+              server_name _;
+              location / {
+                  try_files $uri $uri/ =404;
+              }
+          }
+      notify: restart nginx
+
+    - name: Create /test.html file
+      copy:
+        dest: /var/www/html/test.html
+        content: "Hello world from {{ inventory_hostname }}\n"
+
+  handlers:
+    - name: restart nginx
+      service:
+        name: nginx
+        state: restarted
+
+# ==============================================================================
+# Stage 3: Configure Load Balancer (Machine A)
+# ==============================================================================
+- name: Configure Machine A (HAProxy)
+  hosts: loadbalancer
+  become: true
+  tasks:
+    - name: Allow HAProxy traffic (tcp/80)
+      iptables:
+        chain: INPUT
+        protocol: tcp
+        destination_port: 80
+        jump: ACCEPT
+
+    - name: Set default iptables policy to DROP
+      iptables:
+        chain: INPUT
+        policy: DROP
+
+    - name: Install HAProxy
+      apt:
+        name: haproxy
+        state: present
+        update_cache: true
+
+    - name: Configure HAProxy routing
+      copy:
+        dest: /etc/haproxy/haproxy.cfg
+        content: |
+          global
+              log /dev/log    local0
+              log /dev/log    local1 notice
+              chroot /var/lib/haproxy
+              stats socket /run/haproxy/admin.sock mode 660 level admin
+              stats timeout 30s
+              user haproxy
+              group haproxy
+              daemon
+
+          defaults
+              log     global
+              mode    http
+              option  httplog
+              option  dontlognull
+              timeout connect 5000
+              timeout client  50000
+              timeout server  50000
+
+          frontend http_front
+              bind *:80
+              acl is_test_html path -i /test.html
+              use_backend web_servers if is_test_html
+              default_backend redirect_to_google
+
+          backend web_servers
+              balance roundrobin
+              server machine_b 192.168.0.20:8080 check
+              server machine_c 192.168.0.30:8080 check
+
+          backend redirect_to_google
+              http-request redirect location http://www.google.com
+      notify: restart haproxy
+
+  handlers:
+    - name: restart haproxy
+      service:
+        name: haproxy
+        state: restarted

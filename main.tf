@@ -1,7 +1,7 @@
 terraform {
   required_providers {
-    aws = {
-      source  = "hashicorp/aws"
+    google = {
+      source  = "hashicorp/google"
       version = "~> 5.0"
     }
     local = {
@@ -15,159 +15,145 @@ terraform {
   }
 }
 
-provider "aws" {
-  region = "us-east-1" # You can change this if your default AWS region is different
+provider "google" {
+  project = "ev4petprojects"
+  region  = "us-central1"
+  zone    = "us-central1-a"
 }
 
-# 1. Generate an SSH Key locally so we can use it with Ansible later
+# 1. Generate SSH Key locally to use with Ansible later
 resource "tls_private_key" "pk" {
   algorithm = "RSA"
   rsa_bits  = 4096
 }
 
-resource "aws_key_pair" "kp" {
-  key_name   = "akm-challenge-key"
-  public_key = tls_private_key.pk.public_key_openssh
-}
-
 resource "local_file" "ssh_key" {
-  content  = tls_private_key.pk.private_key_pem
-  filename = "${path.module}/akm-key.pem"
+  content         = tls_private_key.pk.private_key_pem
+  filename        = "${path.module}/akm-key.pem"
   file_permission = "0400"
 }
 
 # 2. Networking (VPC and Subnet)
-resource "aws_vpc" "main" {
-  cidr_block           = "192.168.0.0/16"
-  enable_dns_hostnames = true
-  tags = { Name = "AKM-VPC" }
+resource "google_compute_network" "vpc" {
+  name                    = "akm-vpc"
+  auto_create_subnetworks = false
 }
 
-resource "aws_internet_gateway" "igw" {
-  vpc_id = aws_vpc.main.id
+resource "google_compute_subnetwork" "subnet" {
+  name          = "akm-subnet"
+  ip_cidr_range = "192.168.0.0/24"
+  network       = google_compute_network.vpc.id
 }
 
-resource "aws_subnet" "subnet" {
-  vpc_id                  = aws_vpc.main.id
-  cidr_block              = "192.168.0.0/24"
-  map_public_ip_on_launch = false # Forces all machines to have internal IPs by default
+# 3. Firewalls
+resource "google_compute_firewall" "external" {
+  name    = "allow-external"
+  network = google_compute_network.vpc.name
+
+  allow {
+    protocol = "tcp"
+    ports    = ["22", "80"]
+  }
+
+  source_ranges = ["0.0.0.0/0"]
+  target_tags   = ["public-web"]
 }
 
-resource "aws_route_table" "rt" {
-  vpc_id = aws_vpc.main.id
-  route {
-    cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.igw.id
+resource "google_compute_firewall" "internal" {
+  name    = "allow-internal"
+  network = google_compute_network.vpc.name
+
+  allow {
+    protocol = "tcp"
+    ports    = ["22", "8080"]
+  }
+
+  source_ranges = ["192.168.0.0/24"]
+  target_tags   = ["internal-web"]
+}
+
+# 4. Instances (e2-micro with Ubuntu Minimal)
+resource "google_compute_instance" "machine_a" {
+  name         = "machine-a"
+  machine_type = "e2-micro"
+  tags         = ["public-web"]
+
+  boot_disk {
+    initialize_params {
+      image = "ubuntu-os-cloud/ubuntu-minimal-2204-lts"
+    }
+  }
+
+  network_interface {
+    network    = google_compute_network.vpc.id
+    subnetwork = google_compute_subnetwork.subnet.id
+    network_ip = "192.168.0.10"
+    
+    access_config {
+      # Assigns Public IP
+    }
+  }
+
+  metadata = {
+    ssh-keys = "ubuntu:${tls_private_key.pk.public_key_openssh}"
   }
 }
 
-resource "aws_route_table_association" "rta" {
-  subnet_id      = aws_subnet.subnet.id
-  route_table_id = aws_route_table.rt.id
-}
+resource "google_compute_instance" "machine_b" {
+  name         = "machine-b"
+  machine_type = "e2-micro"
+  tags         = ["internal-web"]
 
-# 3. Security Groups
-resource "aws_security_group" "sg_a" {
-  name        = "machine-a-sg"
-  description = "Allow SSH and HTTP to Machine A"
-  vpc_id      = aws_vpc.main.id
-
-  ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+  boot_disk {
+    initialize_params {
+      image = "ubuntu-os-cloud/ubuntu-minimal-2204-lts"
+    }
   }
 
-  ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+  network_interface {
+    network    = google_compute_network.vpc.id
+    subnetwork = google_compute_subnetwork.subnet.id
+    network_ip = "192.168.0.20"
   }
 
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+  metadata = {
+    ssh-keys = "ubuntu:${tls_private_key.pk.public_key_openssh}"
   }
 }
 
-resource "aws_security_group" "sg_bc" {
-  name        = "machine-bc-sg"
-  description = "Allow internal traffic from Machine A"
-  vpc_id      = aws_vpc.main.id
+resource "google_compute_instance" "machine_c" {
+  name         = "machine-c"
+  machine_type = "e2-micro"
+  tags         = ["internal-web"]
 
-  ingress {
-    from_port       = 22
-    to_port         = 22
-    protocol        = "tcp"
-    security_groups = [aws_security_group.sg_a.id] # Only allow SSH from Machine A
+  boot_disk {
+    initialize_params {
+      image = "ubuntu-os-cloud/ubuntu-minimal-2204-lts"
+    }
   }
 
-  ingress {
-    from_port       = 8080
-    to_port         = 8080
-    protocol        = "tcp"
-    security_groups = [aws_security_group.sg_a.id] # Only allow Nginx traffic from Machine A
+  network_interface {
+    network    = google_compute_network.vpc.id
+    subnetwork = google_compute_subnetwork.subnet.id
+    network_ip = "192.168.0.30"
   }
 
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+  metadata = {
+    ssh-keys = "ubuntu:${tls_private_key.pk.public_key_openssh}"
   }
 }
 
-# 4. AMI Data Source (Always grabs the latest Ubuntu 22.04)
-data "aws_ami" "ubuntu" {
-  most_recent = true
-  filter {
-    name   = "name"
-    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
-  }
-  filter {
-    name   = "virtualization-type"
-    values = ["hvm"]
-  }
-  owners = ["099720109477"] # Canonical
+# 5. Cloud Router and NAT for private internet access (Machines B and C)
+resource "google_compute_router" "router" {
+  name    = "akm-router"
+  network = google_compute_network.vpc.id
+  region  = "us-central1"
 }
 
-# 5. EC2 Instances
-resource "aws_instance" "machine_a" {
-  ami                    = data.aws_ami.ubuntu.id
-  instance_type          = "t2.micro"
-  subnet_id              = aws_subnet.subnet.id
-  private_ip             = "192.168.0.10"
-  vpc_security_group_ids = [aws_security_group.sg_a.id]
-  key_name               = aws_key_pair.kp.key_name
-  tags = { Name = "Machine-A" }
-}
-
-# Assign External Public IP specifically to Machine A
-resource "aws_eip" "eip_a" {
-  instance = aws_instance.machine_a.id
-  domain   = "vpc"
-}
-
-resource "aws_instance" "machine_b" {
-  ami                    = data.aws_ami.ubuntu.id
-  instance_type          = "t2.micro"
-  subnet_id              = aws_subnet.subnet.id
-  private_ip             = "192.168.0.20"
-  vpc_security_group_ids = [aws_security_group.sg_bc.id]
-  key_name               = aws_key_pair.kp.key_name
-  tags = { Name = "Machine-B" }
-}
-
-resource "aws_instance" "machine_c" {
-  ami                    = data.aws_ami.ubuntu.id
-  instance_type          = "t2.micro"
-  subnet_id              = aws_subnet.subnet.id
-  private_ip             = "192.168.0.30"
-  vpc_security_group_ids = [aws_security_group.sg_bc.id]
-  key_name               = aws_key_pair.kp.key_name
-  tags = { Name = "Machine-C" }
+resource "google_compute_router_nat" "nat" {
+  name                               = "akm-nat"
+  router                             = google_compute_router.router.name
+  region                             = google_compute_router.router.region
+  nat_ip_allocate_option             = "AUTO_ONLY"
+  source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
 }

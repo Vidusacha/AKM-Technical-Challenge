@@ -1,12 +1,12 @@
 # roadmap.md
 
-## Phase 1: Cloud Infrastructure Provisioning (Terraform on AWS)
-- [x] Configure AWS CLI and authentication credentials locally.
-- [x] Create Terraform configuration files (`main.tf`, `outputs.tf`).
-- [x] Define an AWS VPC, subnets, and an internet gateway.
-- [x] Define 3 EC2 instances (t2.micro using an Ubuntu AMI) as Machine A, B, and C.
-- [x] Assign a Public IP to Machine A. Machines B and C will reside in a public subnet for local Ansible access but will use their Private IPs for internal application routing.
-- [x] Define AWS Security Groups to allow SSH (tcp/22) from the local IP to all machines, and allow HTTP (tcp/80) to Machine A.
+## Phase 1: Cloud Infrastructure Provisioning (Terraform on GCP)
+- [x] Install Terraform on the local workstation.
+- [x] Install Google Cloud CLI and authenticate locally (`gcloud init`, `gcloud auth application-default login`).
+- [x] Create Terraform configuration files (`main.tf`, `outputs.tf`) using the Google provider.
+- [x] Define a GCP VPC network, subnets, and firewall rules.
+- [x] Define 3 compute instances (`e2-micro` using Ubuntu 22.04 LTS) in the `us-central1` region.
+- [x] Assign a Public IP to Machine A. Machines B and C reside in the subnet but use internal IPs for routing.
 - [ ] Execute `terraform init`, `terraform plan`, and `terraform apply` to provision the infrastructure.
 - [ ] Extract the IP addresses from Terraform outputs to populate the Ansible inventory.
 
@@ -35,5 +35,6 @@
 
 ## Phase 4: Documentation
 - [ ] Commit the Terraform configurations and Ansible playbooks to the Git repository.
-- [ ] **Deviation Action 1:** Document the port conflict. The diagram indicates Machine A using `haproxy-tcp/443`, but the text specifies `tcp/80`. Resolution: Configured HAProxy for `tcp/80` as per text instructions.
-- [ ] **Deviation Action 2:** Document the IP address conflict. The diagram specifies `192.168.0.1`, `192.168.0.2`, and `192.168.0.3`. Because AWS reserves the first four IP addresses in a subnet, we assigned `192.168.0.10`, `192.168.0.20`, and `192.168.0.30` instead.
+- [ ] **Deviation Action 1 (Port Conflict):** The diagram indicates Machine A using `haproxy-tcp/443`, but the text specifies `tcp/80`. Resolution: Configured HAProxy for `tcp/80` as per text instructions.
+- [ ] **Deviation Action 2 (IP Addresses):** The diagram specifies `192.168.0.1`, `192.168.0.2`, and `192.168.0.3`. Because cloud providers reserve the first IP address for the default gateway, we assigned `192.168.0.10`, `192.168.0.20`, and `192.168.0.30` instead.
+- [ ] **Deviation Action 3 (Cloud Provider):** Switched from AWS to GCP to utilize the `e2-micro` Free Tier offering. Placed resources in the `us-central1` region (instead of the local me-west1 region) to ensure Free Tier eligibility.

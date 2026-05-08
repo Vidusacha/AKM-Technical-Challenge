@@ -4,7 +4,7 @@ Follow these steps to deploy and configure the AKM Technical Challenge environme
 
 ## Prerequisites
 
-- [AWS CLI](https://aws.amazon.com/cli/) configured with appropriate credentials.
+- [Google Cloud CLI](https://cloud.google.com/sdk/docs/install) configured and authenticated (`gcloud auth application-default login`).
 - [Terraform](https://www.terraform.io/downloads) installed locally.
 - [Ansible](https://docs.ansible.com/ansible/latest/installation_guide/index.html) installed on your control machine.
 
@@ -27,7 +27,7 @@ Follow these steps to deploy and configure the AKM Technical Challenge environme
 
 ## Step 2: Configuration Management
 
-1. Generate or update the Ansible inventory with the IPs from Step 1.
+1. Ensure `inventory.ini` is updated with the Public IP of Machine A (as `ansible_host` for `machine_a` and in the `ProxyCommand`).
 2. Ensure the private key (`akm-key.pem`) has correct permissions:
    ```bash
    chmod 400 akm-key.pem
@@ -36,6 +36,7 @@ Follow these steps to deploy and configure the AKM Technical Challenge environme
    ```bash
    ansible-playbook -i inventory.ini site.yml
    ```
+   *Note: The playbook will automatically fetch Machine A's public key to your local directory to configure Machines B and C.*
 
 ## Step 3: Verification
 
