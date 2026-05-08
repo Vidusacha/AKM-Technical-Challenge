@@ -25,6 +25,7 @@ The environment consists of three Compute Engine instances (`e2-micro`) within a
 - `site.yml`: Unified Ansible playbook for security and service configuration.
 - `inventory.ini`: Ansible inventory file defining host groups and connection variables.
 - `ansible.cfg`: Ansible configuration for optimal execution (silencing warnings and key checking).
+- `worklog.md`: Detailed documentation of architectural decisions and requirement deviations.
 
 ## Status
 
