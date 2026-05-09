@@ -26,6 +26,7 @@ The environment consists of three Compute Engine instances (`e2-micro`) within a
 - `inventory.ini`: Ansible inventory file defining host groups and connection variables.
 - `ansible.cfg`: Ansible configuration for optimal execution (silencing warnings and key checking).
 - `worklog.md`: Detailed documentation of architectural decisions and requirement deviations.
+- `AKM_Technical_Challenge_Report.docx`: Comprehensive project report in English and Russian, including code illustrations.
 
 ## Status
 
